@@ -1,0 +1,16 @@
+Relaxation Labeling — a clean Python implementation of the Hummel–Zucker (1983)
+identify-by-constraints algorithm.
+Copyright (c) 2026 Manny Glover (R. Michael Glover). All rights reserved.
+
+DUAL LICENSE
+============
+1. OPEN-SOURCE (default): GNU Affero General Public License v3 (AGPL-3.0) — see LICENSE.
+   Free to use, study, share, and modify; if you distribute it or run a modified version
+   as a network service, you must release your changes under the same license.
+
+2. COMMERCIAL (by arrangement): the copyright holder retains the right to license this
+   software separately, without the AGPL obligations. Contact Manny Glover for terms.
+
+Because the author holds the full copyright, the same work is both free under the AGPL and
+available commercially. Contributions are welcome under a short Contributor License
+Agreement that preserves this dual-licensing ability.
