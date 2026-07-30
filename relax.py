@@ -2,23 +2,31 @@ import numpy as np
 
 class RelaxationLabeling(object):
 
-    def __init__(self, compatibility, save, UseMatrixMultiplication=True, iterations=50):
-        self.compatibility = compatibility
+    def __init__(self, compatibility, save=False, UseMatrixMultiplication=True, iterations=50):
+        self.compatibility = np.asarray(compatibility, dtype=float)
         self.save = save
         self.useMatrixMultiplication = UseMatrixMultiplication
         self.iterations = iterations
 
-        self.numObjects = compatibility.shape[0]
-        self.numLabels = compatibility.shape[1]
+        if self.compatibility.ndim not in (4, 6):
+            raise ValueError("compatibility must have 4 or 6 dimensions")
+        if self.compatibility.shape[0] == 0 or self.compatibility.shape[1] == 0:
+            raise ValueError("compatibility must contain at least one object and label")
+        self.numObjects = self.compatibility.shape[0]
+        self.numLabels = self.compatibility.shape[1]
+        expected = (self.numObjects, self.numLabels) * (self.compatibility.ndim // 2)
+        if self.compatibility.shape != expected:
+            raise ValueError(
+                "compatibility axes must alternate objects and labels; "
+                "expected {}, got {}".format(expected, self.compatibility.shape)
+            )
+        if iterations < 0:
+            raise ValueError("iterations must be non-negative")
         self.printMatrices = False
-        if len(compatibility.shape) == 4:
+        if self.compatibility.ndim == 4:
             self.compatType = 2
-        elif len(compatibility.shape) == 6:
-            self.compatType = 3
         else:
-            print ('Unexpected compatibility shape: ',self.compatibility.shape)
-            print ('EXIT PROGRAM')
-            exit(1)
+            self.compatType = 3
 
         self.normalizeSupportAcrossEntireMatrix = False
         self.supportFactor = 1.0
@@ -46,21 +54,16 @@ class RelaxationLabeling(object):
                 self.normalizeSupport(i)
         if self.compatType == 3: 
             if self.useMatrixMultiplication:
-                strengthExpanded = np.zeros((self.numObjects,self.numLabels,self.numObjects,self.numLabels))
-                #TODO Eliminate the else when the broadcast has been verified.  Do timing analysis?
-                if True:
-                    # Duplicate strength across 2 more dimensions to allow for the proper muliplication results below
-                    strengthExpanded = np.broadcast_to(self.strength, (self.numObjects, self.numLabels, self.numObjects, self.numLabels))
-                else:
-                    for i in range(self.numObjects):
-                        for j in range(self.numLabels):
-                            strengthExpanded[i,j,:,:] = self.strength[i,j]
-                z = np.multiply(strengthExpanded, self.compatibility)
-                self.support = np.multiply(self.strength, z)
-                self.support = np.reshape(self.support, (self.numObjects, self.numLabels, -1))
-                self.support = self.support.sum(axis=2)
+                self.support = np.einsum(
+                    "kl,mn,ijklmn->ij",
+                    self.strength,
+                    self.strength,
+                    self.compatibility,
+                    optimize=True,
+                )
                 self.normalizeSupport()
             else:
+                self.support.fill(0.0)
                 for i in range(self.numObjects):
                     for j in range(self.numLabels):
                         for k in range(self.numObjects):
@@ -68,7 +71,7 @@ class RelaxationLabeling(object):
                                 for m in range(self.numObjects):
                                     for n in range(self.numLabels):
                                         self.support[i,j] += self.strength[k,l]*self.strength[m,n]*self.compatibility[i,j,k,l,m,n]
-                self.normalizeSupport(i)
+                    self.normalizeSupport(i)
 
     def normalizeSupport(self, i=None):
         if i is None:
@@ -76,24 +79,33 @@ class RelaxationLabeling(object):
                 minimumSupport = np.amin(self.support)
                 maximumSupport = np.amax(self.support)
                 maximumSupport -= minimumSupport
-                self.support = (self.support - minimumSupport)/maximumSupport
+                if maximumSupport == 0:
+                    self.support.fill(0.0)
+                else:
+                    self.support = (self.support - minimumSupport)/maximumSupport
             else:
                 if self.useMatrixMultiplication:
                     minimumSupport = np.amin(self.support, axis=1)
                     maximumSupport = np.amax(self.support, axis=1)
                     maximumSupport -= minimumSupport
-                    self.support = np.divide(self.support.T - minimumSupport, maximumSupport).T
+                    shifted = (self.support.T - minimumSupport).T
+                    self.support = np.divide(
+                        shifted,
+                        maximumSupport[:, None],
+                        out=np.zeros_like(shifted),
+                        where=maximumSupport[:, None] != 0,
+                    )
                 else:
                     for i in range(self.numObjects):
-                        minimumSupport = np.amin(self.support[i,:])
-                        maximumSupport = np.amax(self.support[i,:])
-                        maximumSupport -= minimumSupport
-                        self.support[i, :] = (self.support[i, :] - minimumSupport)/maximumSupport
+                        self.normalizeSupport(i)
         else:
             minimumSupport = np.amin(self.support[i,:])
             maximumSupport = np.amax(self.support[i,:])
             maximumSupport -= minimumSupport
-            self.support[i, :] = (self.support[i, :] - minimumSupport)/maximumSupport
+            if maximumSupport == 0:
+                self.support[i, :].fill(0.0)
+            else:
+                self.support[i, :] = (self.support[i, :] - minimumSupport)/maximumSupport
 
     def updateStrength(self):
         technique = 2
@@ -110,7 +122,12 @@ class RelaxationLabeling(object):
             if self.useMatrixMultiplication:
                 tmp= self.strength + np.multiply(self.strength,self.support)
                 den = tmp.sum(axis=1)
-                self.strength = np.divide(tmp.T,den).T
+                self.strength = np.divide(
+                    tmp,
+                    den[:, None],
+                    out=self.strength.copy(),
+                    where=den[:, None] != 0,
+                )
                 self.normalizeStrength()
             else:
                 for i in range(self.numObjects):
@@ -118,7 +135,8 @@ class RelaxationLabeling(object):
                     for j in range(0,self.numLabels):
                         den += self.strength[i,j]*(1.0+self.support[i,j])
                     for j in range(0,self.numLabels):
-                        self.strength[i,j] = self.strength[i,j]*(1.0+self.support[i,j])/den
+                        if den != 0:
+                            self.strength[i,j] = self.strength[i,j]*(1.0+self.support[i,j])/den
                     self.normalizeStrength(i)
 
     def normalizeStrength(self, i=None):
@@ -129,14 +147,23 @@ class RelaxationLabeling(object):
                 self.strength = (self.strength.T - minStrength).T
                 if technique == 2:
                     sumStrength = np.sum(self.strength, axis=1)
-                    self.strength = np.divide(self.strength.T, sumStrength).T
+                    uniform = np.full_like(self.strength, 1.0 / self.numLabels)
+                    self.strength = np.divide(
+                        self.strength,
+                        sumStrength[:, None],
+                        out=uniform,
+                        where=sumStrength[:, None] != 0,
+                    )
         else:
             if technique == 1 or technique == 2:
                 minStrength = np.amin(self.strength[i, :])
                 self.strength[i, :] -= minStrength
                 if technique == 2:
                     sumStrength = np.sum(self.strength[i, :])
-                    self.strength[i, :] /= sumStrength
+                    if sumStrength == 0:
+                        self.strength[i, :].fill(1.0 / self.numLabels)
+                    else:
+                        self.strength[i, :] /= sumStrength
 
     def iterate(self):
         print("iteration {}".format(self.iteration))
@@ -206,4 +233,3 @@ class RelaxationLabeling(object):
         print('support', self.support)
         print('strength', self.strength)
         self.assign()
-

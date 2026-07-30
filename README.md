@@ -24,6 +24,13 @@ pip install numpy
 python example_clusters.py
 ```
 
+For development, install the test extra and run the suite:
+
+```bash
+python -m pip install -e ".[test]"
+python -m pytest
+```
+
 `example_clusters.py` is a 30-line worked example: four objects in two hidden clusters, two
 labels, weak per-object priors. The algorithm firms the guess up into the consistent
 labeling and recovers the clusters:
@@ -48,7 +55,9 @@ strength = rl.strength             # final per-(object,label) confidence
   label *l*.
 - **order-3** (triples): shape `(nObj, nLab, nObj, nLab, nObj, nLab)`.
 
-The iteration runs in the constructor.
+The iteration runs in the constructor. Degenerate rows with no compatibility gradient remain
+valid probability distributions rather than producing `NaN`; a symmetric row remains
+uniform until compatibility or a prior breaks the tie.
 
 ### One practical lesson worth knowing
 Relaxation labeling needs a **seed**. From a perfectly uniform, symmetric start there is no

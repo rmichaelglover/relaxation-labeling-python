@@ -16,8 +16,10 @@ class Trool:
         return Trool(-self.value)
     
     def __sub__(self, other):
+        """Return the sign of the difference, preserving the trinary domain."""
         if isinstance(other, Trool):
-            return Trool(self.value - other.value)
+            difference = self.value - other.value
+            return Trool((difference > 0) - (difference < 0))
         raise TypeError("Subtraction must be between two Trool objects.")
     
     def __repr__(self):
@@ -63,4 +65,3 @@ if __name__ == "__main__":
     diff = t1 - t2
     print("Tri difference:", diff)
     print("Norm of difference:", diff.norm())
-
