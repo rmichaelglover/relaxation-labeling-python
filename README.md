@@ -3,6 +3,12 @@
 A small, clean Python implementation of **relaxation labeling** — the identify-by-constraints
 algorithm of Hummel & Zucker, *"On the foundations of relaxation labeling processes"* (1983).
 
+This is the canonical reusable Python core. Applied chess development lives in
+[`whimsy-chess`](https://github.com/rmichaelglover/whimsy-chess), while
+demonstrations and essays are published through
+[`hrl-portfolio`](https://github.com/rmichaelglover/hrl-portfolio). Historical
+client-derived research data are intentionally excluded from this repository.
+
 If you can describe a problem as:
 
 1. a set of **objects** that need identifying,
